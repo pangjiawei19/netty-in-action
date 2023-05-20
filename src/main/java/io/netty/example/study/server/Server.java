@@ -15,6 +15,7 @@ import io.netty.example.study.server.codec.OrderProtocolEncoder;
 import io.netty.example.study.server.handler.OrderServerProcessHandler;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.util.concurrent.DefaultThreadFactory;
 
 /**
  * @author pangjiawei
@@ -25,7 +26,9 @@ public class Server {
         ServerBootstrap serverBootstrap = new ServerBootstrap();
 
         serverBootstrap.channel(NioServerSocketChannel.class);
-        serverBootstrap.group(new NioEventLoopGroup());
+        NioEventLoopGroup bossGroup = new NioEventLoopGroup(0, new DefaultThreadFactory("bossGroup"));
+        NioEventLoopGroup workerGroup = new NioEventLoopGroup(0, new DefaultThreadFactory("workerGroup"));
+        serverBootstrap.group(bossGroup, workerGroup);
         serverBootstrap.handler(new LoggingHandler(LogLevel.INFO));
 
         serverBootstrap.option(NioChannelOption.SO_BACKLOG, 1024);
@@ -36,14 +39,17 @@ public class Server {
             protected void initChannel(NioSocketChannel ch) throws Exception {
                 ChannelPipeline pipeline = ch.pipeline();
 
-                pipeline.addLast(new OrderFrameDecoder());
-                pipeline.addLast(new OrderFrameEncoder());
-                pipeline.addLast(new OrderProtocolEncoder());
-                pipeline.addLast(new OrderProtocolDecoder());
+                pipeline.addLast("debugLogger", new LoggingHandler(LogLevel.DEBUG));
 
-                pipeline.addLast(new LoggingHandler(LogLevel.INFO));
+                pipeline.addLast("frameDecoder", new OrderFrameDecoder());
+                pipeline.addLast("frameEncoder", new OrderFrameEncoder());
 
-                pipeline.addLast(new OrderServerProcessHandler());
+                pipeline.addLast("protocolEncoder", new OrderProtocolEncoder());
+                pipeline.addLast("protocolDecoder", new OrderProtocolDecoder());
+
+                pipeline.addLast("infoLogger", new LoggingHandler(LogLevel.INFO));
+
+                pipeline.addLast("processHandler", new OrderServerProcessHandler());
             }
         });
 
