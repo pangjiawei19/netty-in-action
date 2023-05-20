@@ -5,6 +5,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioChannelOption;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.example.study.client.codec.OrderFrameDecoder;
 import io.netty.example.study.client.codec.OrderFrameEncoder;
@@ -24,7 +25,9 @@ public class Client {
     public static void main(String[] args) throws InterruptedException {
 
         Bootstrap bootstrap = new Bootstrap();
+
         bootstrap.channel(NioSocketChannel.class);
+        bootstrap.option(NioChannelOption.CONNECT_TIMEOUT_MILLIS, 10 * 1000);
         bootstrap.group(new NioEventLoopGroup());
 
         bootstrap.handler(new ChannelInitializer<NioSocketChannel>() {
