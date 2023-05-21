@@ -14,6 +14,7 @@ import io.netty.example.study.server.codec.OrderProtocolDecoder;
 import io.netty.example.study.server.codec.OrderProtocolEncoder;
 import io.netty.example.study.server.handler.MetricsHandler;
 import io.netty.example.study.server.handler.OrderServerProcessHandler;
+import io.netty.handler.flush.FlushConsolidationHandler;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.concurrent.DefaultThreadFactory;
@@ -58,8 +59,10 @@ public class Server {
 
                 pipeline.addLast("infoLogger", new LoggingHandler(LogLevel.INFO));
 
+                pipeline.addLast("flushEnhance", new FlushConsolidationHandler(10, true));
 
-                pipeline.addLast(businessEventExecutor,"processHandler", new OrderServerProcessHandler());
+
+                pipeline.addLast(businessEventExecutor, "processHandler", new OrderServerProcessHandler());
             }
         });
 
