@@ -17,6 +17,7 @@ import io.netty.example.study.server.handler.OrderServerProcessHandler;
 import io.netty.handler.flush.FlushConsolidationHandler;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.traffic.GlobalTrafficShapingHandler;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.netty.util.concurrent.UnorderedThreadPoolEventExecutor;
 
@@ -38,6 +39,7 @@ public class Server {
         serverBootstrap.childOption(NioChannelOption.TCP_NODELAY, true);
 
         MetricsHandler metricsHandler = new MetricsHandler();
+        GlobalTrafficShapingHandler tsHandler = new GlobalTrafficShapingHandler(new NioEventLoopGroup(), 10 * 1024 * 1025, 10 * 1024 * 1024);
 
         UnorderedThreadPoolEventExecutor businessEventExecutor = new UnorderedThreadPoolEventExecutor(10, new DefaultThreadFactory("business"));
 
@@ -48,6 +50,8 @@ public class Server {
                 ChannelPipeline pipeline = ch.pipeline();
 
                 pipeline.addLast("debugLogger", new LoggingHandler(LogLevel.DEBUG));
+
+                pipeline.addLast("trafficShaping", tsHandler);
 
                 pipeline.addLast("metricsHandler", metricsHandler);
 
