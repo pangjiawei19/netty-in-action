@@ -20,7 +20,7 @@ import io.netty.handler.logging.LoggingHandler;
 /**
  * @author pangjiawei
  */
-public class Client {
+public class ClientV0 {
 
     public static void main(String[] args) throws InterruptedException {
 

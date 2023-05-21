@@ -12,10 +12,12 @@ import io.netty.example.study.server.codec.OrderFrameDecoder;
 import io.netty.example.study.server.codec.OrderFrameEncoder;
 import io.netty.example.study.server.codec.OrderProtocolDecoder;
 import io.netty.example.study.server.codec.OrderProtocolEncoder;
+import io.netty.example.study.server.handler.MetricsHandler;
 import io.netty.example.study.server.handler.OrderServerProcessHandler;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.concurrent.DefaultThreadFactory;
+import io.netty.util.concurrent.UnorderedThreadPoolEventExecutor;
 
 /**
  * @author pangjiawei
@@ -34,12 +36,19 @@ public class Server {
         serverBootstrap.option(NioChannelOption.SO_BACKLOG, 1024);
         serverBootstrap.childOption(NioChannelOption.TCP_NODELAY, true);
 
+        MetricsHandler metricsHandler = new MetricsHandler();
+
+        UnorderedThreadPoolEventExecutor businessEventExecutor = new UnorderedThreadPoolEventExecutor(10, new DefaultThreadFactory("business"));
+
         serverBootstrap.childHandler(new ChannelInitializer<NioSocketChannel>() {
             @Override
             protected void initChannel(NioSocketChannel ch) throws Exception {
+
                 ChannelPipeline pipeline = ch.pipeline();
 
                 pipeline.addLast("debugLogger", new LoggingHandler(LogLevel.DEBUG));
+
+                pipeline.addLast("metricsHandler", metricsHandler);
 
                 pipeline.addLast("frameDecoder", new OrderFrameDecoder());
                 pipeline.addLast("frameEncoder", new OrderFrameEncoder());
@@ -49,7 +58,8 @@ public class Server {
 
                 pipeline.addLast("infoLogger", new LoggingHandler(LogLevel.INFO));
 
-                pipeline.addLast("processHandler", new OrderServerProcessHandler());
+
+                pipeline.addLast(businessEventExecutor,"processHandler", new OrderServerProcessHandler());
             }
         });
 
