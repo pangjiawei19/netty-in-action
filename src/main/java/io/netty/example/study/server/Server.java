@@ -16,6 +16,9 @@ import io.netty.example.study.server.handler.MetricsHandler;
 import io.netty.example.study.server.handler.OrderServerProcessHandler;
 import io.netty.example.study.server.handler.ServerIdleCheckHandler;
 import io.netty.handler.flush.FlushConsolidationHandler;
+import io.netty.handler.ipfilter.IpFilterRuleType;
+import io.netty.handler.ipfilter.IpSubnetFilterRule;
+import io.netty.handler.ipfilter.RuleBasedIpFilter;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.handler.traffic.GlobalTrafficShapingHandler;
@@ -44,6 +47,9 @@ public class Server {
 
         UnorderedThreadPoolEventExecutor businessEventExecutor = new UnorderedThreadPoolEventExecutor(10, new DefaultThreadFactory("business"));
 
+        IpSubnetFilterRule ipSubnetFilterRule = new IpSubnetFilterRule("127.1.0.1", 16, IpFilterRuleType.REJECT);
+        RuleBasedIpFilter ruleBasedIpFilter = new RuleBasedIpFilter(ipSubnetFilterRule);
+
         serverBootstrap.childHandler(new ChannelInitializer<NioSocketChannel>() {
             @Override
             protected void initChannel(NioSocketChannel ch) throws Exception {
@@ -51,6 +57,8 @@ public class Server {
                 ChannelPipeline pipeline = ch.pipeline();
 
                 pipeline.addLast("debugLogger", new LoggingHandler(LogLevel.DEBUG));
+
+                pipeline.addLast("ipFilter", ruleBasedIpFilter);
 
                 pipeline.addLast("trafficShaping", tsHandler);
                 pipeline.addLast("idlerCheck", new ServerIdleCheckHandler());
