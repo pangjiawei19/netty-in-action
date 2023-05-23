@@ -12,6 +12,7 @@ import io.netty.example.study.server.codec.OrderFrameDecoder;
 import io.netty.example.study.server.codec.OrderFrameEncoder;
 import io.netty.example.study.server.codec.OrderProtocolDecoder;
 import io.netty.example.study.server.codec.OrderProtocolEncoder;
+import io.netty.example.study.server.handler.AuthHandler;
 import io.netty.example.study.server.handler.MetricsHandler;
 import io.netty.example.study.server.handler.OrderServerProcessHandler;
 import io.netty.example.study.server.handler.ServerIdleCheckHandler;
@@ -50,6 +51,8 @@ public class Server {
         IpSubnetFilterRule ipSubnetFilterRule = new IpSubnetFilterRule("127.1.0.1", 16, IpFilterRuleType.REJECT);
         RuleBasedIpFilter ruleBasedIpFilter = new RuleBasedIpFilter(ipSubnetFilterRule);
 
+        AuthHandler handler = new AuthHandler();
+
         serverBootstrap.childHandler(new ChannelInitializer<NioSocketChannel>() {
             @Override
             protected void initChannel(NioSocketChannel ch) throws Exception {
@@ -73,8 +76,9 @@ public class Server {
 
                 pipeline.addLast("infoLogger", new LoggingHandler(LogLevel.INFO));
 
-                pipeline.addLast("flushEnhance", new FlushConsolidationHandler(10, true));
+                pipeline.addLast("authHandler", handler);
 
+                pipeline.addLast("flushEnhance", new FlushConsolidationHandler(10, true));
 
                 pipeline.addLast(businessEventExecutor, "processHandler", new OrderServerProcessHandler());
             }

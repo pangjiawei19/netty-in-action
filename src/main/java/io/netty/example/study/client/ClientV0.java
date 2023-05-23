@@ -14,6 +14,7 @@ import io.netty.example.study.client.codec.OrderProtocolEncoder;
 import io.netty.example.study.client.handler.ClientIdleCheckHandler;
 import io.netty.example.study.client.handler.KeepaliveHandler;
 import io.netty.example.study.common.RequestMessage;
+import io.netty.example.study.common.auth.AuthOperation;
 import io.netty.example.study.common.order.OrderOperation;
 import io.netty.example.study.util.IdUtil;
 import io.netty.handler.logging.LogLevel;
@@ -56,6 +57,10 @@ public class ClientV0 {
         ChannelFuture channelFuture = bootstrap.connect("127.0.0.1", 8090);
 
         channelFuture.sync();
+
+        AuthOperation authOperation = new AuthOperation("admin1", "password");
+        RequestMessage authRequest = new RequestMessage(IdUtil.nextId(), authOperation);
+        channelFuture.channel().writeAndFlush(authRequest);
 
         RequestMessage requestMessage = new RequestMessage(IdUtil.nextId(), new OrderOperation(1001, "Tomato"));
         channelFuture.channel().writeAndFlush(requestMessage);
