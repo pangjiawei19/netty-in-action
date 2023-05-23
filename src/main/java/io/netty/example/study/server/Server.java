@@ -22,16 +22,24 @@ import io.netty.handler.ipfilter.IpSubnetFilterRule;
 import io.netty.handler.ipfilter.RuleBasedIpFilter;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.handler.traffic.GlobalTrafficShapingHandler;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.netty.util.concurrent.UnorderedThreadPoolEventExecutor;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.net.ssl.SSLException;
+import java.security.cert.CertificateException;
 
 /**
  * @author pangjiawei
  */
+@Slf4j
 public class Server {
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) throws InterruptedException, CertificateException, SSLException {
         ServerBootstrap serverBootstrap = new ServerBootstrap();
 
         serverBootstrap.channel(NioServerSocketChannel.class);
@@ -53,6 +61,11 @@ public class Server {
 
         AuthHandler handler = new AuthHandler();
 
+        // ssl
+        SelfSignedCertificate selfSignedCertificate = new SelfSignedCertificate();
+        log.info("self signed certificate location: {}", selfSignedCertificate.certificate().toString());
+        SslContext sslContext = SslContextBuilder.forServer(selfSignedCertificate.certificate(), selfSignedCertificate.privateKey()).build();
+
         serverBootstrap.childHandler(new ChannelInitializer<NioSocketChannel>() {
             @Override
             protected void initChannel(NioSocketChannel ch) throws Exception {
@@ -67,6 +80,8 @@ public class Server {
                 pipeline.addLast("idlerCheck", new ServerIdleCheckHandler());
 
                 pipeline.addLast("metricsHandler", metricsHandler);
+
+                pipeline.addLast("ssl", sslContext.newHandler(ch.alloc()));
 
                 pipeline.addLast("frameDecoder", new OrderFrameDecoder());
                 pipeline.addLast("frameEncoder", new OrderFrameEncoder());
