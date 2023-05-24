@@ -26,6 +26,7 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.handler.traffic.GlobalTrafficShapingHandler;
+import io.netty.util.Version;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.netty.util.concurrent.UnorderedThreadPoolEventExecutor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +41,8 @@ import java.security.cert.CertificateException;
 public class Server {
 
     public static void main(String[] args) throws InterruptedException, CertificateException, SSLException {
+        log.debug("Netty Version Info: {}", Version.identify().entrySet());
+
         ServerBootstrap serverBootstrap = new ServerBootstrap();
 
         serverBootstrap.channel(NioServerSocketChannel.class);
