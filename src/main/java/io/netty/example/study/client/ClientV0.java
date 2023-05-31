@@ -36,49 +36,56 @@ public class ClientV0 {
 
         bootstrap.channel(NioSocketChannel.class);
         bootstrap.option(NioChannelOption.CONNECT_TIMEOUT_MILLIS, 10 * 1000);
-        bootstrap.group(new NioEventLoopGroup());
 
-        LoggingHandler loggingHandler = new LoggingHandler(LogLevel.INFO);
-        KeepaliveHandler keepaliveHandler = new KeepaliveHandler();
+        NioEventLoopGroup group = new NioEventLoopGroup();
 
-        // ssl
-        SslContextBuilder sslContextBuilder = SslContextBuilder.forClient();
-        // 直接信任自签证书，也可以自己安装证书，安装方法参考 resources/ssl.txt
-        sslContextBuilder.trustManager(InsecureTrustManagerFactory.INSTANCE);
-        SslContext sslContext = sslContextBuilder.build();
+        try {
+            bootstrap.group(group);
 
-        bootstrap.handler(new ChannelInitializer<NioSocketChannel>() {
-            @Override
-            protected void initChannel(NioSocketChannel ch) throws Exception {
-                ChannelPipeline pipeline = ch.pipeline();
+            LoggingHandler loggingHandler = new LoggingHandler(LogLevel.INFO);
+            KeepaliveHandler keepaliveHandler = new KeepaliveHandler();
 
-                pipeline.addLast(new ClientIdleCheckHandler());
+            // ssl
+            SslContextBuilder sslContextBuilder = SslContextBuilder.forClient();
+            // 直接信任自签证书，也可以自己安装证书，安装方法参考 resources/ssl.txt
+            sslContextBuilder.trustManager(InsecureTrustManagerFactory.INSTANCE);
+            SslContext sslContext = sslContextBuilder.build();
 
-                pipeline.addLast(sslContext.newHandler(ch.alloc()));
+            bootstrap.handler(new ChannelInitializer<NioSocketChannel>() {
+                @Override
+                protected void initChannel(NioSocketChannel ch) throws Exception {
+                    ChannelPipeline pipeline = ch.pipeline();
 
-                pipeline.addLast(new OrderFrameDecoder());
-                pipeline.addLast(new OrderFrameEncoder());
-                pipeline.addLast(new OrderProtocolEncoder());
-                pipeline.addLast(new OrderProtocolDecoder());
+                    pipeline.addLast(new ClientIdleCheckHandler());
 
-                pipeline.addLast(loggingHandler);
+                    pipeline.addLast(sslContext.newHandler(ch.alloc()));
 
-                pipeline.addLast(keepaliveHandler);
-            }
-        });
+                    pipeline.addLast(new OrderFrameDecoder());
+                    pipeline.addLast(new OrderFrameEncoder());
 
-        ChannelFuture channelFuture = bootstrap.connect("127.0.0.1", 8090);
+                    pipeline.addLast(new OrderProtocolEncoder());
+                    pipeline.addLast(new OrderProtocolDecoder());
 
-        channelFuture.sync();
+                    pipeline.addLast(loggingHandler);
 
-        AuthOperation authOperation = new AuthOperation("admin", "password");
-        RequestMessage authRequest = new RequestMessage(IdUtil.nextId(), authOperation);
-        channelFuture.channel().writeAndFlush(authRequest);
+                    pipeline.addLast(keepaliveHandler);
+                }
+            });
 
-        RequestMessage requestMessage = new RequestMessage(IdUtil.nextId(), new OrderOperation(1001, "Tomato"));
-        channelFuture.channel().writeAndFlush(requestMessage);
+            ChannelFuture channelFuture = bootstrap.connect("127.0.0.1", 8090);
 
+            channelFuture.sync();
 
-        channelFuture.channel().closeFuture().sync();
+            AuthOperation authOperation = new AuthOperation("admin", "password");
+            RequestMessage authRequest = new RequestMessage(IdUtil.nextId(), authOperation);
+            channelFuture.channel().writeAndFlush(authRequest);
+
+            RequestMessage requestMessage = new RequestMessage(IdUtil.nextId(), new OrderOperation(1001, "Tomato"));
+            channelFuture.channel().writeAndFlush(requestMessage);
+
+            channelFuture.channel().closeFuture().sync();
+        } finally {
+            group.shutdownGracefully();
+        }
     }
 }

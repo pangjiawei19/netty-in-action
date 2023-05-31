@@ -11,44 +11,61 @@ import io.netty.example.study.client.codec.*;
 import io.netty.example.study.common.order.OrderOperation;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+
+import javax.net.ssl.SSLException;
 
 /**
  * @author pangjiawei
  */
 public class ClientV1 {
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) throws InterruptedException, SSLException {
 
         Bootstrap bootstrap = new Bootstrap();
 
         bootstrap.channel(NioSocketChannel.class);
         bootstrap.option(NioChannelOption.CONNECT_TIMEOUT_MILLIS, 10 * 1000);
-        bootstrap.group(new NioEventLoopGroup());
+        NioEventLoopGroup group = new NioEventLoopGroup();
+        try {
+            bootstrap.group(group);
 
-        bootstrap.handler(new ChannelInitializer<NioSocketChannel>() {
-            @Override
-            protected void initChannel(NioSocketChannel ch) throws Exception {
-                ChannelPipeline pipeline = ch.pipeline();
+            // ssl
+            SslContextBuilder sslContextBuilder = SslContextBuilder.forClient();
+            sslContextBuilder.trustManager(InsecureTrustManagerFactory.INSTANCE);
+            SslContext sslContext = sslContextBuilder.build();
 
-                pipeline.addLast(new OrderFrameDecoder());
-                pipeline.addLast(new OrderFrameEncoder());
-                pipeline.addLast(new OrderProtocolEncoder());
-                pipeline.addLast(new OrderProtocolDecoder());
+            bootstrap.handler(new ChannelInitializer<NioSocketChannel>() {
+                @Override
+                protected void initChannel(NioSocketChannel ch) throws Exception {
+                    ChannelPipeline pipeline = ch.pipeline();
 
-                pipeline.addLast(new OperationToRequestMessageEncoder());
+                    pipeline.addLast(sslContext.newHandler(ch.alloc()));
 
-                pipeline.addLast(new LoggingHandler(LogLevel.INFO));
-            }
-        });
+                    pipeline.addLast(new OrderFrameDecoder());
+                    pipeline.addLast(new OrderFrameEncoder());
 
-        ChannelFuture channelFuture = bootstrap.connect("127.0.0.1", 8090);
+                    pipeline.addLast(new OrderProtocolEncoder());
+                    pipeline.addLast(new OrderProtocolDecoder());
 
-        channelFuture.sync();
+                    pipeline.addLast(new OperationToRequestMessageEncoder());
 
-        OrderOperation operation = new OrderOperation(1001, "Tomato");
-        channelFuture.channel().writeAndFlush(operation);
+                    pipeline.addLast(new LoggingHandler(LogLevel.INFO));
+                }
+            });
 
+            ChannelFuture channelFuture = bootstrap.connect("127.0.0.1", 8090);
 
-        channelFuture.channel().closeFuture().sync();
+            channelFuture.sync();
+
+            OrderOperation operation = new OrderOperation(1001, "Tomato");
+            channelFuture.channel().writeAndFlush(operation);
+
+            channelFuture.channel().closeFuture().sync();
+        } finally {
+            group.shutdownGracefully();
+        }
     }
 }

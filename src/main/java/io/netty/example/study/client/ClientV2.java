@@ -17,7 +17,11 @@ import io.netty.example.study.common.order.OrderOperation;
 import io.netty.example.study.util.IdUtil;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 
+import javax.net.ssl.SSLException;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -25,49 +29,62 @@ import java.util.concurrent.ExecutionException;
  */
 public class ClientV2 {
 
-    public static void main(String[] args) throws InterruptedException, ExecutionException {
+    public static void main(String[] args) throws InterruptedException, ExecutionException, SSLException {
 
         Bootstrap bootstrap = new Bootstrap();
 
         bootstrap.channel(NioSocketChannel.class);
         bootstrap.option(NioChannelOption.CONNECT_TIMEOUT_MILLIS, 10 * 1000);
-        bootstrap.group(new NioEventLoopGroup());
+        NioEventLoopGroup group = new NioEventLoopGroup();
 
-        RequestPendingCenter requestPendingCenter = new RequestPendingCenter();
+        try {
+            bootstrap.group(group);
 
-        bootstrap.handler(new ChannelInitializer<NioSocketChannel>() {
-            @Override
-            protected void initChannel(NioSocketChannel ch) throws Exception {
-                ChannelPipeline pipeline = ch.pipeline();
+            RequestPendingCenter requestPendingCenter = new RequestPendingCenter();
 
-                pipeline.addLast(new OrderFrameDecoder());
-                pipeline.addLast(new OrderFrameEncoder());
-                pipeline.addLast(new OrderProtocolEncoder());
-                pipeline.addLast(new OrderProtocolDecoder());
+            // ssl
+            SslContextBuilder sslContextBuilder = SslContextBuilder.forClient();
+            sslContextBuilder.trustManager(InsecureTrustManagerFactory.INSTANCE);
+            SslContext sslContext = sslContextBuilder.build();
+
+            bootstrap.handler(new ChannelInitializer<NioSocketChannel>() {
+                @Override
+                protected void initChannel(NioSocketChannel ch) throws Exception {
+                    ChannelPipeline pipeline = ch.pipeline();
+
+                    pipeline.addLast(sslContext.newHandler(ch.alloc()));
+
+                    pipeline.addLast(new OrderFrameDecoder());
+                    pipeline.addLast(new OrderFrameEncoder());
+                    pipeline.addLast(new OrderProtocolEncoder());
+                    pipeline.addLast(new OrderProtocolDecoder());
 
 
-                pipeline.addLast(new ResponseDispatcherHandler(requestPendingCenter));
+                    pipeline.addLast(new ResponseDispatcherHandler(requestPendingCenter));
 
-                pipeline.addLast(new OperationToRequestMessageEncoder());
+                    pipeline.addLast(new OperationToRequestMessageEncoder());
 
-                pipeline.addLast(new LoggingHandler(LogLevel.INFO));
-            }
-        });
+                    pipeline.addLast(new LoggingHandler(LogLevel.INFO));
+                }
+            });
 
-        ChannelFuture channelFuture = bootstrap.connect("127.0.0.1", 8090);
+            ChannelFuture channelFuture = bootstrap.connect("127.0.0.1", 8090);
 
-        channelFuture.sync();
+            channelFuture.sync();
 
-        long streamId = IdUtil.nextId();
-        OperationResultFuture future = new OperationResultFuture();
-        requestPendingCenter.add(streamId, future);
+            long streamId = IdUtil.nextId();
+            OperationResultFuture future = new OperationResultFuture();
+            requestPendingCenter.add(streamId, future);
 
-        RequestMessage requestMessage = new RequestMessage(streamId, new OrderOperation(1001, "Tomato"));
-        channelFuture.channel().writeAndFlush(requestMessage);
+            RequestMessage requestMessage = new RequestMessage(streamId, new OrderOperation(1001, "Tomato"));
+            channelFuture.channel().writeAndFlush(requestMessage);
 
-        OperationResult operationResult = future.get();
-        System.out.println(operationResult);
+            OperationResult operationResult = future.get();
+            System.out.println(operationResult);
 
-        channelFuture.channel().closeFuture().sync();
+            channelFuture.channel().closeFuture().sync();
+        } finally {
+            group.shutdownGracefully();
+        }
     }
 }
