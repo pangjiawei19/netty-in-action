@@ -46,63 +46,87 @@ public class Server {
         ServerBootstrap serverBootstrap = new ServerBootstrap();
 
         serverBootstrap.channel(NioServerSocketChannel.class);
-        NioEventLoopGroup bossGroup = new NioEventLoopGroup(0, new DefaultThreadFactory("bossGroup"));
-        NioEventLoopGroup workerGroup = new NioEventLoopGroup(0, new DefaultThreadFactory("workerGroup"));
-        serverBootstrap.group(bossGroup, workerGroup);
-        serverBootstrap.handler(new LoggingHandler(LogLevel.INFO));
-
         serverBootstrap.option(NioChannelOption.SO_BACKLOG, 1024);
         serverBootstrap.childOption(NioChannelOption.TCP_NODELAY, true);
+        serverBootstrap.handler(new LoggingHandler(LogLevel.INFO));
 
-        MetricsHandler metricsHandler = new MetricsHandler();
-        GlobalTrafficShapingHandler tsHandler = new GlobalTrafficShapingHandler(new NioEventLoopGroup(), 10 * 1024 * 1025, 10 * 1024 * 1024);
 
-        UnorderedThreadPoolEventExecutor businessEventExecutor = new UnorderedThreadPoolEventExecutor(10, new DefaultThreadFactory("business"));
+        // thread
+        NioEventLoopGroup bossGroup = new NioEventLoopGroup(0, new DefaultThreadFactory("bossGroup"));
+        NioEventLoopGroup workerGroup = new NioEventLoopGroup(0, new DefaultThreadFactory("workerGroup"));
+        UnorderedThreadPoolEventExecutor businessGroup = new UnorderedThreadPoolEventExecutor(10, new DefaultThreadFactory("business"));
+        NioEventLoopGroup trafficShapingGroup = new NioEventLoopGroup(0, new DefaultThreadFactory("TS"));
 
-        IpSubnetFilterRule ipSubnetFilterRule = new IpSubnetFilterRule("127.1.0.1", 16, IpFilterRuleType.REJECT);
-        RuleBasedIpFilter ruleBasedIpFilter = new RuleBasedIpFilter(ipSubnetFilterRule);
 
-        AuthHandler handler = new AuthHandler();
+        try {
+            serverBootstrap.group(bossGroup, workerGroup);
 
-        // ssl
-        SelfSignedCertificate selfSignedCertificate = new SelfSignedCertificate();
-        log.info("self signed certificate location: {}", selfSignedCertificate.certificate().toString());
-        SslContext sslContext = SslContextBuilder.forServer(selfSignedCertificate.certificate(), selfSignedCertificate.privateKey()).build();
+            // metrics
+            MetricsHandler metricsHandler = new MetricsHandler();
 
-        serverBootstrap.childHandler(new ChannelInitializer<NioSocketChannel>() {
-            @Override
-            protected void initChannel(NioSocketChannel ch) throws Exception {
+            // traffic shaping
+            GlobalTrafficShapingHandler tsHandler = new GlobalTrafficShapingHandler(trafficShapingGroup, 10 * 1024 * 1025, 10 * 1024 * 1024);
 
-                ChannelPipeline pipeline = ch.pipeline();
+            // ipFilter
+            IpSubnetFilterRule ipSubnetFilterRule = new IpSubnetFilterRule("127.1.0.1", 16, IpFilterRuleType.REJECT);
+            RuleBasedIpFilter ruleBasedIpFilter = new RuleBasedIpFilter(ipSubnetFilterRule);
 
-                pipeline.addLast("debugLogger", new LoggingHandler(LogLevel.DEBUG));
+            // auth
+            AuthHandler handler = new AuthHandler();
 
-                pipeline.addLast("ipFilter", ruleBasedIpFilter);
+            // ssl
+            SelfSignedCertificate selfSignedCertificate = new SelfSignedCertificate();
+            log.info("self signed certificate location: {}", selfSignedCertificate.certificate().toString());
+            SslContext sslContext = SslContextBuilder.forServer(selfSignedCertificate.certificate(), selfSignedCertificate.privateKey()).build();
 
-                pipeline.addLast("trafficShaping", tsHandler);
-                pipeline.addLast("idlerCheck", new ServerIdleCheckHandler());
+            // log
+            LoggingHandler debugLogHandler = new LoggingHandler(LogLevel.DEBUG);
+            LoggingHandler infoLogHandler = new LoggingHandler(LogLevel.INFO);
 
-                pipeline.addLast("metricsHandler", metricsHandler);
+            serverBootstrap.childHandler(new ChannelInitializer<NioSocketChannel>() {
+                @Override
+                protected void initChannel(NioSocketChannel ch) throws Exception {
 
-                pipeline.addLast("ssl", sslContext.newHandler(ch.alloc()));
+                    ChannelPipeline pipeline = ch.pipeline();
 
-                pipeline.addLast("frameDecoder", new OrderFrameDecoder());
-                pipeline.addLast("frameEncoder", new OrderFrameEncoder());
+                    pipeline.addLast("debugLogger", debugLogHandler);
 
-                pipeline.addLast("protocolEncoder", new OrderProtocolEncoder());
-                pipeline.addLast("protocolDecoder", new OrderProtocolDecoder());
+                    pipeline.addLast("ipFilter", ruleBasedIpFilter);
 
-                pipeline.addLast("infoLogger", new LoggingHandler(LogLevel.INFO));
+                    pipeline.addLast("trafficShaping", tsHandler);
 
-                pipeline.addLast("authHandler", handler);
+                    pipeline.addLast("idlerCheck", new ServerIdleCheckHandler());
 
-                pipeline.addLast("flushEnhance", new FlushConsolidationHandler(10, true));
+                    pipeline.addLast("metricsHandler", metricsHandler);
 
-                pipeline.addLast(businessEventExecutor, "processHandler", new OrderServerProcessHandler());
-            }
-        });
+                    pipeline.addLast("ssl", sslContext.newHandler(ch.alloc()));
 
-        ChannelFuture channelFuture = serverBootstrap.bind(8090).sync();
-        channelFuture.channel().closeFuture().sync();
+                    pipeline.addLast("frameDecoder", new OrderFrameDecoder());
+                    pipeline.addLast("frameEncoder", new OrderFrameEncoder());
+
+                    pipeline.addLast("protocolEncoder", new OrderProtocolEncoder());
+                    pipeline.addLast("protocolDecoder", new OrderProtocolDecoder());
+
+
+                    pipeline.addLast("infoLogger", infoLogHandler);
+
+                    pipeline.addLast("authHandler", handler);
+
+                    pipeline.addLast("flushEnhance", new FlushConsolidationHandler(10, true));
+
+                    pipeline.addLast(businessGroup, "processHandler", new OrderServerProcessHandler());
+                }
+            });
+
+            ChannelFuture channelFuture = serverBootstrap.bind(8090).sync();
+
+            channelFuture.channel().closeFuture().sync();
+
+        } finally {
+            bossGroup.shutdownGracefully();
+            workerGroup.shutdownGracefully();
+            businessGroup.shutdownGracefully();
+            trafficShapingGroup.shutdownGracefully();
+        }
     }
 }
